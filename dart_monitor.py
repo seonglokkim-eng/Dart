@@ -92,6 +92,7 @@ def write_to_sheet(items):
     if not items:
         return
     creds_dict = json.loads(GOOGLE_CREDS_JSON)
+    creds_dict['private_key'] = creds_dict['private_key'].replace('\\n', '\n')
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
