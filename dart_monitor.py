@@ -125,8 +125,8 @@ def main():
     if today.weekday() == 0:
         bgn_de = (today - timedelta(days=3)).strftime("%Y%m%d")
     else:
-        bgn_de = today.strftime("%Y%m%d")
-    end_de = today.strftime("%Y%m%d")
+        bgn_de = (today - timedelta(days=1)).strftime("%Y%m%d")
+    end_de = (today - timedelta(days=1)).strftime("%Y%m%d")
     items = fetch_disclosures(bgn_de, end_de)
     send_telegram(items)
     write_to_sheet(items)
