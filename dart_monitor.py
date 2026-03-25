@@ -57,8 +57,9 @@ def fetch_disclosures(bgn_de, end_de):
         data = resp.json()
         if data.get("status") == "000" and data.get("list"):
             for item in data["list"]:
-                item["_report_category"] = keyword
-            all_items.extend(data["list"])
+                if keyword in item.get("report_nm", ""):
+                    item["_report_category"] = keyword
+                    all_items.append(item)
     return all_items
 
 def send_telegram(items):
