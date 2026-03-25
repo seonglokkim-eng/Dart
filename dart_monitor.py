@@ -68,18 +68,28 @@ def fetch_disclosures(bgn_de, end_de):
 def fetch_dart_document(rcept_no):
     """DART 공시 본문 텍스트 가져오기"""
     try:
-        url = "https://opendart.fss.or.kr/api/document.xml"
-        params = {
-            "crtfc_key": DART_API_KEY,
-            "rcept_no": rcept_no,
-        }
-        resp = requests.get(url, params=params, timeout=15)
-        resp.raise_for_status()
-        # 텍스트만 추출 (태그 제거)
         import re
-        text = re.sub(r"<[^>]+>", " ", resp.text)
+        # 공시 뷰어에서 문서 목록 가져오기
+        index_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
+        resp = requests.get(index_url, timeout=15)
+        resp.encoding = "utf-8"
+
+        # 본문 문서 URL 추출
+        doc_urls = re.findall(r"dsaf001/main\.do\?rcpNo=\d+&dcmNo=(\d+)", resp.text)
+        if not doc_urls:
+            doc_urls = re.findall(r"dcmNo=(\d+)", resp.text)
+        if not doc_urls:
+            return ""
+
+        dcm_no = doc_urls[0]
+        doc_url = f"https://dart.fss.or.kr/report/viewer.do?rcpNo={rcept_no}&dcmNo={dcm_no}"
+        doc_resp = requests.get(doc_url, timeout=15)
+        doc_resp.encoding = "utf-8"
+
+        # HTML 태그 제거
+        text = re.sub(r"<[^>]+>", " ", doc_resp.text)
         text = re.sub(r"\s+", " ", text).strip()
-        return text[:3000]  # 3000자 제한
+        return text[:3000]
     except:
         return ""
 
