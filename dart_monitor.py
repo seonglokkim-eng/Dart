@@ -78,28 +78,25 @@ def send_telegram(items):
     if not items:
         print("해당 공시 없음")
         return
-    today = datetime.now().strftime("%Y-%m-%d")
-    header = f"📢 *DART 공시 알림* ({today})\n총 {len(items)}건\n{'─'*30}\n"
-    messages = [header]
+
+    # 보고서명별로 그룹핑
+    groups = {}
     for item in items:
-        dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
-        msg = (
-            f"🏢 *{item['corp_name']}* ({item.get('stock_code','비상장')})\n"
-            f"📄 {item['report_nm']}\n"
-            f"📅 {item['rcept_dt']}\n"
-            f"🔗 [공시 보기]({dart_url})\n"
-            f"{'─'*30}\n"
-        )
-        messages.append(msg)
-    full_message = ""
-    for chunk in messages:
-        if len(full_message) + len(chunk) > 3800:
-            _send_telegram_message(full_message)
-            full_message = chunk
-        else:
-            full_message += chunk
-    if full_message:
-        _send_telegram_message(full_message)
+        report_nm = item["report_nm"]
+        if report_nm not in groups:
+            groups[report_nm] = []
+        groups[report_nm].append(item)
+
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # 보고서명 1건당 메세지 1개
+    for report_nm, group_items in groups.items():
+        lines = [f"📢 *{report_nm}* ({today})\n"]
+        for item in group_items:
+            dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
+            corp = f"{item['corp_name']}({item.get('stock_code','비상장')})"
+            lines.append(f"• {corp} [공시]({dart_url})")
+        _send_telegram_message("\n".join(lines))
 
 def _send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
