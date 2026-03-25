@@ -17,6 +17,10 @@ TELEGRAM_CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]
 GOOGLE_SHEET_ID    = os.environ["GOOGLE_SHEET_ID"]
 GOOGLE_CREDS_JSON  = os.environ["GOOGLE_CREDS_JSON"]
 
+REPORT_KEYWORDS = [
+    "매출액및손익구조",
+]
+
 REPORT_TYPES = {
     "유상증자결정":         "C002",
     "무상증자결정":         "C003",
@@ -47,6 +51,22 @@ def fetch_disclosures(bgn_de, end_de):
         if data.get("status") == "000" and data.get("list"):
             for item in data["list"]:
                 item["_report_category"] = report_name
+            all_items.extend(data["list"])
+    for keyword in REPORT_KEYWORDS:
+        params = {
+            "crtfc_key": DART_API_KEY,
+            "bgn_de": bgn_de,
+            "end_de": end_de,
+            "report_nm": keyword,
+            "page_no": "1",
+            "page_count": "100",
+        }
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("status") == "000" and data.get("list"):
+            for item in data["list"]:
+                item["_report_category"] = keyword
             all_items.extend(data["list"])
     return all_items
 
