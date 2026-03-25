@@ -65,42 +65,36 @@ def fetch_disclosures(bgn_de, end_de):
         page_no += 1
     return all_items
 
+fetch_dart_document 함수 교체해 주세요:
 def fetch_dart_document(rcept_no):
-    """DART 공시 본문 텍스트 가져오기"""
+    """DART API로 공시 원문 텍스트 가져오기"""
     try:
-        from bs4 import BeautifulSoup
+        import zipfile
+        import io
         import re
 
-        headers = {"User-Agent": "Mozilla/5.0"}
+        url = "https://opendart.fss.or.kr/api/document.xml"
+        params = {
+            "crtfc_key": DART_API_KEY,
+            "rcept_no": rcept_no,
+        }
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
 
-        # 문서 목록 페이지 접속
-        main_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
-        resp = requests.get(main_url, headers=headers, timeout=15)
-        resp.encoding = "utf-8"
-        soup = BeautifulSoup(resp.text, "html.parser")
+        # zip 파일 열기
+        z = zipfile.ZipFile(io.BytesIO(resp.content))
+        text_all = ""
+        for name in z.namelist():
+            if name.endswith(".html") or name.endswith(".htm"):
+                with z.open(name) as f:
+                    content = f.read().decode("utf-8", errors="ignore")
+                    text = re.sub(r"<[^>]+>", " ", content)
+                    text = re.sub(r"\s+", " ", text).strip()
+                    text_all += text + " "
+                if len(text_all) > 3000:
+                    break
 
-        # dcmNo 추출
-        dcm_no = None
-        for tag in soup.find_all(attrs={"dcmno": True}):
-            dcm_no = tag["dcmno"]
-            break
-        if not dcm_no:
-            match = re.search(r"dcmNo[=:](\d+)", resp.text)
-            if match:
-                dcm_no = match.group(1)
-        if not dcm_no:
-            return ""
-
-        # 본문 페이지 접속
-        doc_url = f"https://dart.fss.or.kr/report/viewer.do?rcpNo={rcept_no}&dcmNo={dcm_no}"
-        doc_resp = requests.get(doc_url, headers=headers, timeout=15)
-        doc_resp.encoding = "utf-8"
-        doc_soup = BeautifulSoup(doc_resp.text, "html.parser")
-
-        # 텍스트 추출
-        text = doc_soup.get_text(separator=" ")
-        text = re.sub(r"\s+", " ", text).strip()
-        return text[:3000]
+        return text_all[:3000] if text_all else ""
     except Exception as e:
         print(f"본문 추출 오류: {e}")
         return ""
