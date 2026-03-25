@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.11"
       - name: 패키지 설치
-        run: pip install requests gspread google-auth
+        run: pip install requests gspread google-auth beautifulsoup4
       - name: 공시 모니터링 실행
         env:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
