@@ -10,8 +10,8 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]
 GOOGLE_SHEET_ID    = os.environ["GOOGLE_SHEET_ID"]
 GOOGLE_CREDS_JSON  = os.environ["GOOGLE_CREDS_JSON"]
+GEMINI_API_KEY     = os.environ["GEMINI_API_KEY"]
 
-# 원하는 보고서명 목록 (정확히 일치하거나 포함된 것만 가져옴)
 TARGET_REPORTS = [
     "매출액또는손익구조30%(대규모법인은15%)이상변동",
     "매출액또는손익구조30%(대규모법인은15%)이상변경",
@@ -32,10 +32,8 @@ TARGET_REPORTS = [
 ]
 
 def is_target(report_nm):
-    # 기재정정 제외
     if "기재정정" in report_nm:
         return False
-    # 목록에 있는 보고서명과 일치하는 것만
     for target in TARGET_REPORTS:
         if target == report_nm.strip():
             return True
@@ -45,7 +43,6 @@ def fetch_disclosures(bgn_de, end_de):
     url = "https://opendart.fss.or.kr/api/list.json"
     all_items = []
     page_no = 1
-
     while True:
         params = {
             "crtfc_key": DART_API_KEY,
@@ -57,29 +54,72 @@ def fetch_disclosures(bgn_de, end_de):
         resp = requests.get(url, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
-
         if data.get("status") != "000" or not data.get("list"):
             break
-
         for item in data["list"]:
             if is_target(item.get("report_nm", "")):
-                item["_report_category"] = item["report_nm"]
                 all_items.append(item)
-
-        # 마지막 페이지 확인
         total = int(data.get("total_count", 0))
         if page_no * 100 >= total:
             break
         page_no += 1
-
     return all_items
+
+def fetch_dart_document(rcept_no):
+    """DART 공시 본문 텍스트 가져오기"""
+    try:
+        url = "https://opendart.fss.or.kr/api/document.xml"
+        params = {
+            "crtfc_key": DART_API_KEY,
+            "rcept_no": rcept_no,
+        }
+        resp = requests.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+        # 텍스트만 추출 (태그 제거)
+        import re
+        text = re.sub(r"<[^>]+>", " ", resp.text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text[:3000]  # 3000자 제한
+    except:
+        return ""
+
+def summarize_with_gemini(corp_name, report_nm, doc_text):
+    """Gemini로 공시 요약 + 호재/악재 판단"""
+    if not doc_text:
+        return "본문 추출 실패", "❓ 판단불가"
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+        prompt = f"""
+다음은 {corp_name}의 '{report_nm}' 공시 내용입니다.
+
+{doc_text}
+
+아래 형식으로 답해주세요:
+요약: (2~3줄로 핵심만)
+판단: (✅ 호재 / ❌ 악재 / ⚠️ 중립 중 하나만 선택하고 이유 한 줄)
+"""
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
+        resp = requests.post(url, json=payload, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        text = result["candidates"][0]["content"]["parts"][0]["text"]
+        lines = text.strip().split("\n")
+        summary = ""
+        judgment = ""
+        for line in lines:
+            if line.startswith("요약:"):
+                summary = line.replace("요약:", "").strip()
+            elif line.startswith("판단:"):
+                judgment = line.replace("판단:", "").strip()
+        return summary or text[:200], judgment or "❓ 판단불가"
+    except:
+        return "요약 실패", "❓ 판단불가"
 
 def send_telegram(items):
     if not items:
         print("해당 공시 없음")
         return
 
-    # 보고서명별로 그룹핑
     groups = {}
     for item in items:
         report_nm = item["report_nm"]
@@ -87,16 +127,21 @@ def send_telegram(items):
             groups[report_nm] = []
         groups[report_nm].append(item)
 
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    # 보고서명 1건당 메세지 1개
     for report_nm, group_items in groups.items():
         date = group_items[0]["rcept_dt"]
         lines = [f"📢 *{report_nm}* ({date})\n"]
         for item in group_items:
             dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
             corp = f"{item['corp_name']}({item.get('stock_code','비상장')})"
+
+            # 공시 본문 가져와서 AI 요약
+            doc_text = fetch_dart_document(item["rcept_no"])
+            summary, judgment = summarize_with_gemini(item["corp_name"], report_nm, doc_text)
+
             lines.append(f"• {corp} [공시]({dart_url})")
+            lines.append(f"  📝 {summary}")
+            lines.append(f"  {judgment}\n")
+
         _send_telegram_message("\n".join(lines))
 
 def _send_telegram_message(text):
