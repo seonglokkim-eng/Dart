@@ -91,7 +91,8 @@ def send_telegram(items):
 
     # 보고서명 1건당 메세지 1개
     for report_nm, group_items in groups.items():
-        lines = [f"📢 *{report_nm}* ({today})\n"]
+        date = group_items[0]["rcept_dt"]
+        lines = [f"📢 *{report_nm}* ({date})\n"]
         for item in group_items:
             dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
             corp = f"{item['corp_name']}({item.get('stock_code','비상장')})"
