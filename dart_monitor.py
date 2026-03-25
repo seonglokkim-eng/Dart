@@ -65,14 +65,11 @@ def fetch_disclosures(bgn_de, end_de):
         page_no += 1
     return all_items
 
-fetch_dart_document 함수 교체해 주세요:
 def fetch_dart_document(rcept_no):
-    """DART API로 공시 원문 텍스트 가져오기"""
     try:
         import zipfile
         import io
         import re
-
         url = "https://opendart.fss.or.kr/api/document.xml"
         params = {
             "crtfc_key": DART_API_KEY,
@@ -80,8 +77,6 @@ def fetch_dart_document(rcept_no):
         }
         resp = requests.get(url, params=params, timeout=15)
         resp.raise_for_status()
-
-        # zip 파일 열기
         z = zipfile.ZipFile(io.BytesIO(resp.content))
         text_all = ""
         for name in z.namelist():
@@ -93,12 +88,11 @@ def fetch_dart_document(rcept_no):
                     text_all += text + " "
                 if len(text_all) > 3000:
                     break
-
         return text_all[:3000] if text_all else ""
     except Exception as e:
         print(f"본문 추출 오류: {e}")
         return ""
-
+        
 def summarize_with_gemini(corp_name, report_nm, doc_text):
     """Gemini로 공시 요약 + 호재/악재 판단"""
     if not doc_text:
