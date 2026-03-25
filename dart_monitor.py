@@ -1,9 +1,3 @@
-
-"""
-DART 공시 모니터링 → 텔레그램 알림 + 구글 스프레드시트 기록
-매일 GitHub Actions로 자동 실행됩니다.
-"""
-
 import os
 import json
 import requests
@@ -17,63 +11,81 @@ TELEGRAM_CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]
 GOOGLE_SHEET_ID    = os.environ["GOOGLE_SHEET_ID"]
 GOOGLE_CREDS_JSON  = os.environ["GOOGLE_CREDS_JSON"]
 
-REPORT_KEYWORDS = [
-    "매출액및손익구조",
+# 원하는 보고서명 목록 (정확히 일치하거나 포함된 것만 가져옴)
+TARGET_REPORTS = [
+    "매출액또는손익구조30%(대규모법인은15%)이상변동",
+    "매출액또는손익구조30%(대규모법인은15%)이상변경",
+    "공급계약체결",
+    "공급계약체결(자진공시)",
+    "시설외투자등",
+    "시설외투자등(자율공시)",
+    "신규시설투자등",
+    "신규시설투자등(자율공시)",
+    "임원ㆍ주요주주특정증권등소유상황보고서",
+    "기업가치제고계획(자율공시)",
+    "장래계획에관한사항",
+    "수시공시의무관련사항(공정공시)",
+    "기타경영사항(자율공시)",
+    "주요사항보고서(타법인주식및출자증권양도결정)",
+    "주요사항보고서(타법인주식및출자증권양수결정)",
+    "주식등의대량보유상황보고서(일반)",
 ]
 
-REPORT_TYPES = {
-}
+def is_target(report_nm):
+    # 기재정정 제외
+    if "기재정정" in report_nm:
+        return False
+    # 목록에 있는 보고서명과 일치하는 것만
+    for target in TARGET_REPORTS:
+        if target == report_nm.strip():
+            return True
+    return False
 
 def fetch_disclosures(bgn_de, end_de):
     url = "https://opendart.fss.or.kr/api/list.json"
     all_items = []
-    for report_name, pblntf_ty in REPORT_TYPES.items():
+    page_no = 1
+
+    while True:
         params = {
             "crtfc_key": DART_API_KEY,
             "bgn_de": bgn_de,
             "end_de": end_de,
-            "pblntf_detail_ty": pblntf_ty,
-            "page_no": "1",
+            "page_no": str(page_no),
             "page_count": "100",
         }
         resp = requests.get(url, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
-        if data.get("status") == "000" and data.get("list"):
-            for item in data["list"]:
-                item["_report_category"] = report_name
-            all_items.extend(data["list"])
-    for keyword in REPORT_KEYWORDS:
-        params = {
-            "crtfc_key": DART_API_KEY,
-            "bgn_de": bgn_de,
-            "end_de": end_de,
-            "report_nm": keyword,
-            "page_no": "1",
-            "page_count": "100",
-        }
-        resp = requests.get(url, params=params, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("status") == "000" and data.get("list"):
-            for item in data["list"]:
-                if keyword in item.get("report_nm", ""):
-                    item["_report_category"] = keyword
-                    all_items.append(item)
+
+        if data.get("status") != "000" or not data.get("list"):
+            break
+
+        for item in data["list"]:
+            if is_target(item.get("report_nm", "")):
+                item["_report_category"] = item["report_nm"]
+                all_items.append(item)
+
+        # 마지막 페이지 확인
+        total = int(data.get("total_count", 0))
+        if page_no * 100 >= total:
+            break
+        page_no += 1
+
     return all_items
 
 def send_telegram(items):
     if not items:
-        print("오늘 해당 공시 없음")
+        print("해당 공시 없음")
         return
     today = datetime.now().strftime("%Y-%m-%d")
-    header = f"📢 *DART 주요사항 공시 알림* ({today})\n총 {len(items)}건\n{'─'*30}\n"
+    header = f"📢 *DART 공시 알림* ({today})\n총 {len(items)}건\n{'─'*30}\n"
     messages = [header]
     for item in items:
         dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
         msg = (
             f"🏢 *{item['corp_name']}* ({item.get('stock_code','비상장')})\n"
-            f"📋 {item['_report_category']}\n"
+            f"📄 {item['report_nm']}\n"
             f"📅 {item['rcept_dt']}\n"
             f"🔗 [공시 보기]({dart_url})\n"
             f"{'─'*30}\n"
@@ -116,7 +128,7 @@ def write_to_sheet(items):
         ws = sh.worksheet("공시기록")
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title="공시기록", rows=1000, cols=8)
-        ws.append_row(["접수일", "회사명", "종목코드", "보고서분류", "보고서명", "공시링크", "수집일시"])
+        ws.append_row(["접수일", "회사명", "종목코드", "보고서명", "공시링크", "수집일시"])
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     rows = []
     for item in items:
@@ -125,12 +137,12 @@ def write_to_sheet(items):
             item["rcept_dt"],
             item["corp_name"],
             item.get("stock_code", "비상장"),
-            item["_report_category"],
             item["report_nm"],
             dart_url,
             now_str,
         ])
     ws.append_rows(rows, value_input_option="USER_ENTERED")
+    print(f"스프레드시트 기록 완료: {len(rows)}행 추가")
 
 def main():
     today = datetime.now()
@@ -139,7 +151,10 @@ def main():
     else:
         bgn_de = (today - timedelta(days=1)).strftime("%Y%m%d")
     end_de = (today - timedelta(days=1)).strftime("%Y%m%d")
+
+    print(f"조회 기간: {bgn_de} ~ {end_de}")
     items = fetch_disclosures(bgn_de, end_de)
+    print(f"수집된 공시 수: {len(items)}")
     send_telegram(items)
     write_to_sheet(items)
 
