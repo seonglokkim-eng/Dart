@@ -68,29 +68,41 @@ def fetch_disclosures(bgn_de, end_de):
 def fetch_dart_document(rcept_no):
     """DART 공시 본문 텍스트 가져오기"""
     try:
+        from bs4 import BeautifulSoup
         import re
-        # 공시 뷰어에서 문서 목록 가져오기
-        index_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
-        resp = requests.get(index_url, timeout=15)
-        resp.encoding = "utf-8"
 
-        # 본문 문서 URL 추출
-        doc_urls = re.findall(r"dsaf001/main\.do\?rcpNo=\d+&dcmNo=(\d+)", resp.text)
-        if not doc_urls:
-            doc_urls = re.findall(r"dcmNo=(\d+)", resp.text)
-        if not doc_urls:
+        headers = {"User-Agent": "Mozilla/5.0"}
+
+        # 문서 목록 페이지 접속
+        main_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={rcept_no}"
+        resp = requests.get(main_url, headers=headers, timeout=15)
+        resp.encoding = "utf-8"
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # dcmNo 추출
+        dcm_no = None
+        for tag in soup.find_all(attrs={"dcmno": True}):
+            dcm_no = tag["dcmno"]
+            break
+        if not dcm_no:
+            match = re.search(r"dcmNo[=:](\d+)", resp.text)
+            if match:
+                dcm_no = match.group(1)
+        if not dcm_no:
             return ""
 
-        dcm_no = doc_urls[0]
+        # 본문 페이지 접속
         doc_url = f"https://dart.fss.or.kr/report/viewer.do?rcpNo={rcept_no}&dcmNo={dcm_no}"
-        doc_resp = requests.get(doc_url, timeout=15)
+        doc_resp = requests.get(doc_url, headers=headers, timeout=15)
         doc_resp.encoding = "utf-8"
+        doc_soup = BeautifulSoup(doc_resp.text, "html.parser")
 
-        # HTML 태그 제거
-        text = re.sub(r"<[^>]+>", " ", doc_resp.text)
+        # 텍스트 추출
+        text = doc_soup.get_text(separator=" ")
         text = re.sub(r"\s+", " ", text).strip()
         return text[:3000]
-    except:
+    except Exception as e:
+        print(f"본문 추출 오류: {e}")
         return ""
 
 def summarize_with_gemini(corp_name, report_nm, doc_text):
