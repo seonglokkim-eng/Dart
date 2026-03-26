@@ -2,6 +2,7 @@ import os
 import json
 import re
 import io
+import time
 import zipfile
 import requests
 import gspread
@@ -78,12 +79,13 @@ def fetch_dart_document(rcept_no):
         resp = requests.get(url, params=params, timeout=15)
         resp.raise_for_status()
         z = zipfile.ZipFile(io.BytesIO(resp.content))
-        print(f"zip 내 파일 목록: {z.namelist()}")
         text_all = ""
         for name in z.namelist():
             with z.open(name) as f:
                 content = f.read().decode("utf-8", errors="ignore")
+                # xml/html 태그 모두 제거
                 text = re.sub(r"<[^>]+>", " ", content)
+                text = re.sub(r"&[a-zA-Z]+;", " ", text)
                 text = re.sub(r"\s+", " ", text).strip()
                 text_all += text + " "
             if len(text_all) > 3000:
@@ -97,6 +99,7 @@ def summarize_with_gemini(corp_name, report_nm, doc_text):
     if not doc_text:
         return "본문 추출 실패", "❓ 판단불가"
     try:
+        time.sleep(2)  # 429 방지
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
         prompt = f"""
 다음은 {corp_name}의 '{report_nm}' 공시 내용입니다.
