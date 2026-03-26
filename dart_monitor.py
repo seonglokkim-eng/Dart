@@ -83,7 +83,6 @@ def fetch_dart_document(rcept_no):
         for name in z.namelist():
             with z.open(name) as f:
                 content = f.read().decode("utf-8", errors="ignore")
-                # xml/html 태그 모두 제거
                 text = re.sub(r"<[^>]+>", " ", content)
                 text = re.sub(r"&[a-zA-Z]+;", " ", text)
                 text = re.sub(r"\s+", " ", text).strip()
@@ -99,8 +98,8 @@ def summarize_with_gemini(corp_name, report_nm, doc_text):
     if not doc_text:
         return "본문 추출 실패", "❓ 판단불가"
     try:
-        time.sleep(6)  # 429 방지 (분당 10건 한도)
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+        time.sleep(3)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
         prompt = f"""
 다음은 {corp_name}의 '{report_nm}' 공시 내용입니다.
 
@@ -142,7 +141,7 @@ def send_telegram(items):
     for report_nm, group_items in groups.items():
         date = group_items[0]["rcept_dt"]
         lines = [f"📢 *{report_nm}* ({date})\n"]
-        for item in group_items:
+        for item in group_items[:10]:  # 보고서명당 최대 10건만 요약
             dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
             corp = f"{item['corp_name']}({item.get('stock_code','비상장')})"
             doc_text = fetch_dart_document(item["rcept_no"])
