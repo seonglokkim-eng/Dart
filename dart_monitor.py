@@ -83,13 +83,20 @@ def fetch_dart_document(rcept_no):
         for name in z.namelist():
             with z.open(name) as f:
                 content = f.read().decode("utf-8", errors="ignore")
+                # CSS/스타일 블록 제거
+                content = re.sub(r"<style[^>]*>.*?</style>", " ", content, flags=re.DOTALL)
+                content = re.sub(r"<script[^>]*>.*?</script>", " ", content, flags=re.DOTALL)
+                # 태그 제거
                 text = re.sub(r"<[^>]+>", " ", content)
                 text = re.sub(r"&[a-zA-Z]+;", " ", text)
                 text = re.sub(r"\s+", " ", text).strip()
+                # CSS 잔재 제거 (font-family 같은 것들)
+                if "font-family" in text[:200]:
+                    continue
                 text_all += text + " "
             if len(text_all) > 3000:
                 break
-        print(f"추출된 텍스트 샘플: {text_all[:500]}")
+        print(f"추출된 텍스트 샘플: {text_all[:300]}")
         return text_all[:3000] if text_all else ""
     except Exception as e:
         print(f"본문 추출 오류: {e}")
@@ -112,11 +119,12 @@ def summarize_with_gemini(corp_name, report_nm, doc_text):
 
     for attempt in range(3):
         try:
-            time.sleep(5)
+            time.sleep(8)
             resp = requests.post(url, json=payload, timeout=30)
             if resp.status_code == 429:
-                print(f"429 대기 중... ({attempt+1}번째)")
-                time.sleep(20)
+                wait = 30 * (attempt + 1)
+                print(f"429 대기 중... {wait}초")
+                time.sleep(wait)
                 continue
             resp.raise_for_status()
             result = resp.json()
