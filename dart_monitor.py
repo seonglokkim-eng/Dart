@@ -2,7 +2,7 @@ import os
 import json
 import requests
 import gspread
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from google.oauth2.service_account import Credentials
 
 DART_API_KEY       = os.environ["DART_API_KEY"]
@@ -112,7 +112,7 @@ def write_to_sheet(items):
     except gspread.WorksheetNotFound:
         ws = sh.add_worksheet(title="공시기록", rows=1000, cols=8)
         ws.append_row(["접수일", "회사명", "종목코드", "보고서명", "공시링크", "수집일시"])
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now_str = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M")
     rows = []
     for item in items:
         dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
@@ -128,12 +128,17 @@ def write_to_sheet(items):
     print(f"스프레드시트 기록 완료: {len(rows)}행 추가")
 
 def main():
-    today = datetime.now()
+    # UTC+9 한국시간으로 변환
+    utc_now = datetime.now(timezone.utc)
+    kst_now = utc_now + timedelta(hours=9)
+    today = kst_now
+
     if today.weekday() == 0:
         bgn_de = (today - timedelta(days=3)).strftime("%Y%m%d")
     else:
         bgn_de = (today - timedelta(days=1)).strftime("%Y%m%d")
     end_de = (today - timedelta(days=1)).strftime("%Y%m%d")
+
     print(f"조회 기간: {bgn_de} ~ {end_de}")
     items = fetch_disclosures(bgn_de, end_de)
     print(f"수집된 공시 수: {len(items)}")
