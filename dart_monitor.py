@@ -99,8 +99,8 @@ def summarize_with_gemini(corp_name, report_nm, doc_text):
     if not doc_text:
         return "본문 추출 실패", "❓ 판단불가"
     try:
-        time.sleep(2)  # 429 방지
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+        time.sleep(6)  # 429 방지 (분당 10건 한도)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
         prompt = f"""
 다음은 {corp_name}의 '{report_nm}' 공시 내용입니다.
 
