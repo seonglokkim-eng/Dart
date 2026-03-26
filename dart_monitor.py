@@ -141,14 +141,23 @@ def send_telegram(items):
     for report_nm, group_items in groups.items():
         date = group_items[0]["rcept_dt"]
         lines = [f"📢 *{report_nm}* ({date})\n"]
-        for item in group_items[:10]:  # 보고서명당 최대 10건만 요약
-            dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
-            corp = f"{item['corp_name']}({item.get('stock_code','비상장')})"
-            doc_text = fetch_dart_document(item["rcept_no"])
-            summary, judgment = summarize_with_gemini(item["corp_name"], report_nm, doc_text)
-            lines.append(f"• {corp} [공시]({dart_url})")
-            lines.append(f"  📝 {summary}")
-            lines.append(f"  {judgment}\n")
+
+        # 10건 초과면 요약 없이 목록만
+        if len(group_items) > 10:
+            for item in group_items:
+                dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
+                corp = f"{item['corp_name']}({item.get('stock_code','비상장')})"
+                lines.append(f"• {corp} [공시]({dart_url})")
+        else:
+            for item in group_items:
+                dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
+                corp = f"{item['corp_name']}({item.get('stock_code','비상장')})"
+                doc_text = fetch_dart_document(item["rcept_no"])
+                summary, judgment = summarize_with_gemini(item["corp_name"], report_nm, doc_text)
+                lines.append(f"• {corp} [공시]({dart_url})")
+                lines.append(f"  📝 {summary}")
+                lines.append(f"  {judgment}\n")
+
         _send_telegram_message("\n".join(lines))
 
 def _send_telegram_message(text):
