@@ -93,6 +93,8 @@ def fetch_dart_document(rcept_no):
     except Exception as e:
         print(f"본문 추출 오류: {e}")
         return ""
+    print(f"추출된 텍스트 샘플: {text_all[:500]}")
+        return text_all[:3000] if text_all else ""
 
 def summarize_with_gemini(corp_name, report_nm, doc_text):
     if not doc_text:
