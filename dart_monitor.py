@@ -1,5 +1,8 @@
 import os
 import json
+import re
+import io
+import zipfile
 import requests
 import gspread
 from datetime import datetime, timedelta
@@ -67,9 +70,6 @@ def fetch_disclosures(bgn_de, end_de):
 
 def fetch_dart_document(rcept_no):
     try:
-        import zipfile
-        import io
-        import re
         url = "https://opendart.fss.or.kr/api/document.xml"
         params = {
             "crtfc_key": DART_API_KEY,
@@ -78,23 +78,22 @@ def fetch_dart_document(rcept_no):
         resp = requests.get(url, params=params, timeout=15)
         resp.raise_for_status()
         z = zipfile.ZipFile(io.BytesIO(resp.content))
+        print(f"zip 내 파일 목록: {z.namelist()}")
         text_all = ""
         for name in z.namelist():
-            if name.endswith(".html") or name.endswith(".htm"):
-                with z.open(name) as f:
-                    content = f.read().decode("utf-8", errors="ignore")
-                    text = re.sub(r"<[^>]+>", " ", content)
-                    text = re.sub(r"\s+", " ", text).strip()
-                    text_all += text + " "
-                if len(text_all) > 3000:
-                    break
+            with z.open(name) as f:
+                content = f.read().decode("utf-8", errors="ignore")
+                text = re.sub(r"<[^>]+>", " ", content)
+                text = re.sub(r"\s+", " ", text).strip()
+                text_all += text + " "
+            if len(text_all) > 3000:
+                break
         return text_all[:3000] if text_all else ""
     except Exception as e:
         print(f"본문 추출 오류: {e}")
         return ""
-        
+
 def summarize_with_gemini(corp_name, report_nm, doc_text):
-    """Gemini로 공시 요약 + 호재/악재 판단"""
     if not doc_text:
         return "본문 추출 실패", "❓ 판단불가"
     try:
@@ -122,14 +121,14 @@ def summarize_with_gemini(corp_name, report_nm, doc_text):
             elif line.startswith("판단:"):
                 judgment = line.replace("판단:", "").strip()
         return summary or text[:200], judgment or "❓ 판단불가"
-    except:
+    except Exception as e:
+        print(f"Gemini 오류: {e}")
         return "요약 실패", "❓ 판단불가"
 
 def send_telegram(items):
     if not items:
         print("해당 공시 없음")
         return
-
     groups = {}
     for item in items:
         report_nm = item["report_nm"]
@@ -143,15 +142,11 @@ def send_telegram(items):
         for item in group_items:
             dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
             corp = f"{item['corp_name']}({item.get('stock_code','비상장')})"
-
-            # 공시 본문 가져와서 AI 요약
             doc_text = fetch_dart_document(item["rcept_no"])
             summary, judgment = summarize_with_gemini(item["corp_name"], report_nm, doc_text)
-
             lines.append(f"• {corp} [공시]({dart_url})")
             lines.append(f"  📝 {summary}")
             lines.append(f"  {judgment}\n")
-
         _send_telegram_message("\n".join(lines))
 
 def _send_telegram_message(text):
@@ -204,7 +199,6 @@ def main():
     else:
         bgn_de = (today - timedelta(days=1)).strftime("%Y%m%d")
     end_de = (today - timedelta(days=1)).strftime("%Y%m%d")
-
     print(f"조회 기간: {bgn_de} ~ {end_de}")
     items = fetch_disclosures(bgn_de, end_de)
     print(f"수집된 공시 수: {len(items)}")
