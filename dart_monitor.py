@@ -64,9 +64,9 @@ def fetch_disclosures(bgn_de, end_de):
         page_no += 1
     return all_items
 
-def send_telegram(items):
+def send_telegram(items, bgn_de, end_de):
     if not items:
-        print("해당 공시 없음")
+        _send_telegram_message(f"📭 해당 공시 없음 ({bgn_de} ~ {end_de})")
         return
     groups = {}
     for item in items:
@@ -84,7 +84,6 @@ def send_telegram(items):
             lines.append(f"• {corp}")
             lines.append(f"  {dart_url}")
 
-        # 4096자 초과시 분할 전송
         full_text = "\n".join(lines)
         if len(full_text) > 4000:
             chunks = []
@@ -148,16 +147,13 @@ def main():
     kst_now = utc_now + timedelta(hours=9)
     today = kst_now
 
-    if today.weekday() == 0:
-        bgn_de = (today - timedelta(days=3)).strftime("%Y%m%d")
-    else:
-        bgn_de = (today - timedelta(days=1)).strftime("%Y%m%d")
+    bgn_de = (today - timedelta(days=1)).strftime("%Y%m%d")
     end_de = (today - timedelta(days=1)).strftime("%Y%m%d")
 
     print(f"조회 기간: {bgn_de} ~ {end_de}")
     items = fetch_disclosures(bgn_de, end_de)
     print(f"수집된 공시 수: {len(items)}")
-    send_telegram(items)
+    send_telegram(items, bgn_de, end_de)
     write_to_sheet(items)
 
 if __name__ == "__main__":
