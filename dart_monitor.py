@@ -77,20 +77,36 @@ def send_telegram(items):
 
     for report_nm, group_items in groups.items():
         date = group_items[0]["rcept_dt"]
-        lines = [f"📢 *{report_nm}* ({date})\n"]
+        lines = [f"📢 {report_nm} ({date})\n"]
         for item in group_items:
             dart_url = f"https://dart.fss.or.kr/dsaf001/main.do?rcpNo={item['rcept_no']}"
             corp = f"{item['corp_name']}({item.get('stock_code','비상장')})"
-            lines.append(f"• {corp} [공시]({dart_url})")
-        _send_telegram_message("\n".join(lines))
+            lines.append(f"• {corp}")
+            lines.append(f"  {dart_url}")
+
+        # 4096자 초과시 분할 전송
+        full_text = "\n".join(lines)
+        if len(full_text) > 4000:
+            chunks = []
+            current = ""
+            for line in lines:
+                if len(current) + len(line) > 4000:
+                    chunks.append(current)
+                    current = line + "\n"
+                else:
+                    current += line + "\n"
+            if current:
+                chunks.append(current)
+            for chunk in chunks:
+                _send_telegram_message(chunk)
+        else:
+            _send_telegram_message(full_text)
 
 def _send_telegram_message(text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
         "text": text,
-        "parse_mode": "Markdown",
-        "disable_web_page_preview": True,
     }
     resp = requests.post(url, json=payload, timeout=15)
     resp.raise_for_status()
@@ -128,7 +144,6 @@ def write_to_sheet(items):
     print(f"스프레드시트 기록 완료: {len(rows)}행 추가")
 
 def main():
-    # UTC+9 한국시간으로 변환
     utc_now = datetime.now(timezone.utc)
     kst_now = utc_now + timedelta(hours=9)
     today = kst_now
